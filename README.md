@@ -51,6 +51,15 @@ cd backend && NOUR_FAKE_MODELS=1 uvicorn app.main:app --port 8000
 
 Starts in seconds and uses fake models. Answers only quote retrieved text and are **not real** (the UI shows «وضع تجريبي»). Use it to work on the frontend.
 
+### Browser-only preview (one HTML file)
+
+```bash
+cd backend && python -m scripts.export_corpus     # refresh frontend/src/preview/corpus.json
+cd ../frontend && npm run build:preview           # → dist-preview/index.html
+```
+
+Runs without the backend: keyword search (BM25) instead of BGE-M3 + reranker, and Claude (artifact `sample` capability) instead of Groq. Good for showing the UI. It doesn't measure allam's quality.
+
 ### Tests
 
 ```bash

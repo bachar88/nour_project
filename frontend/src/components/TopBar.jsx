@@ -22,7 +22,12 @@ export default function TopBar({ onSearch, health }) {
         {health === null && <span className="pill muted">جارٍ الاتصال…</span>}
         {health === false && <span className="pill danger">الخادم غير متصل</span>}
         {health?.demo && <span className="pill warn" title="نماذج تجريبية: الأجوبة ليست حقيقية">وضع تجريبي</span>}
-        {health && !health.demo && <span className="pill ok">متصل · {health.llm}</span>}
+        {health?.preview && (
+          <span className="pill warn" title="البحث بالكلمات المفتاحية بدل BGE-M3، والإجابة من Claude بدل allam-2-7b">
+            معاينة · بحث بالكلمات + Claude
+          </span>
+        )}
+        {health && !health.demo && !health.preview && <span className="pill ok">متصل · {health.llm}</span>}
       </div>
     </header>
   );
