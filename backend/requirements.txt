@@ -1,4 +1,5 @@
-# Local development / tests (the deployed API only needs ../requirements.txt)
--r ../requirements.txt
-uvicorn[standard]>=0.30
-pytest>=8
+# Runtime dependencies of the API (installed by Vercel for the "api" service). Kept small on purpose:
+# the models run on Cloudflare / Groq, the vectors live in Supabase.
+fastapi>=0.115
+httpx>=0.27
+python-dotenv>=1.0

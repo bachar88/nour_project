@@ -1,5 +1,0 @@
-# Runtime dependencies of the API (installed by Vercel). Kept small on purpose:
-# the models run on Cloudflare / Groq, the vectors live in Supabase.
-fastapi>=0.115
-httpx>=0.27
-python-dotenv>=1.0
