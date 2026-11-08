@@ -1,7 +1,7 @@
 // Browser-only stand-in for the FastAPI backend, used by `npm run build:preview` (artifact build).
 // Same methods as ../api.js. Differences from the real backend (shown on the page):
 //   - retrieval: BM25 keyword search with light Arabic stemming (instead of BGE-M3 + reranker)
-//   - answers:   Claude via the artifact's `sample` capability (instead of Groq allam-2-7b)
+//   - answers:   Claude via the artifact's `sample` capability (instead of Groq gpt-oss-120b)
 // Selection, merging, prompt, quote check and highlight spans follow backend/app/rag.py.
 import corpus from "./corpus.json";
 

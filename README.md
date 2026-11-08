@@ -4,7 +4,7 @@ Ask questions about **Salat** and get answers taken only from Maliki texts, **Al
 
 ```
 nour_project/
-├── backend/            FastAPI + RAG (BGE-M3 → Chroma → reranker → Groq allam-2-7b)
+├── backend/            FastAPI + RAG (BGE-M3 → Chroma → reranker → Groq gpt-oss-120b)
 │   ├── app/
 │   │   ├── config.py       all settings (overridable with .env)
 │   │   ├── chunking.py     books → babs → units → segments → chunks, quote matching
@@ -58,7 +58,7 @@ cd backend && python -m scripts.export_corpus     # refresh frontend/src/preview
 cd ../frontend && npm run build:preview           # → dist-preview/index.html
 ```
 
-Runs without the backend: keyword search (BM25) instead of BGE-M3 + reranker, and Claude (artifact `sample` capability) instead of Groq. Good for showing the UI. It doesn't measure allam's quality.
+Runs without the backend: keyword search (BM25) instead of BGE-M3 + reranker, and Claude (artifact `sample` capability) instead of Groq. Good for showing the UI. It doesn't measure gpt-oss-120b's quality.
 
 ### Tests
 

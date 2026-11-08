@@ -59,8 +59,18 @@ class GroqLLM:
         self.settings = settings
 
     def complete(self, messages: list[dict]) -> tuple[str, int]:
+        s = self.settings
+        extra = {}
+        if s.groq_model.startswith("openai/gpt-oss"):
+            # "hidden": the reasoning is not put in front of the answer, so parse_answer only sees
+            # «الجواب: … الدليل: «…»». It still counts in usage and in max_completion_tokens.
+            extra = {"reasoning_effort": s.reasoning_effort, "reasoning_format": "hidden"}
         comp = self.client.chat.completions.create(
-            model=self.settings.groq_model, messages=messages,
-            temperature=self.settings.temperature, max_tokens=self.settings.max_tokens)
+            model=s.groq_model, messages=messages, temperature=s.temperature,
+            max_completion_tokens=s.max_tokens, **extra)
+        choice = comp.choices[0]
+        text = (choice.message.content or "").strip()
+        if not text and choice.finish_reason == "length":
+            raise RuntimeError("النموذج استهلك حدّ الرموز في التفكير قبل أن يجيب (زد MAX_TOKENS أو خفّض REASONING_EFFORT).")
         tokens = comp.usage.total_tokens if comp.usage else 0
-        return comp.choices[0].message.content.strip(), tokens
+        return text, tokens

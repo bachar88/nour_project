@@ -35,7 +35,10 @@ class Settings:
     use_reranker: bool = _env("USE_RERANKER", True, bool)
     device: str = _env("DEVICE", "auto")  # auto | cpu | cuda
     groq_api_key: str = _env("GROQ_API_KEY", "")
-    groq_model: str = _env("GROQ_MODEL", "allam-2-7b")
+    groq_model: str = _env("GROQ_MODEL", "openai/gpt-oss-120b")
+    # gpt-oss only: how much it "thinks" before answering (low | medium | high).
+    # Thinking tokens count against Groq's free limits, so keep it low for text extraction.
+    reasoning_effort: str = _env("REASONING_EFFORT", "low")
 
     # Chunking (characters)
     chunk_target_chars: int = _env("CHUNK_TARGET_CHARS", 450, int)
@@ -54,7 +57,8 @@ class Settings:
 
     # Generation
     temperature: float = _env("TEMPERATURE", 0.0, float)
-    max_tokens: int = _env("MAX_TOKENS", 250, int)
+    # Budget for thinking + answer together (a reasoning model needs more than the ~250 of allam)
+    max_tokens: int = _env("MAX_TOKENS", 1024, int)
 
     # Storage
     chroma_dir: Path = Path(_env("CHROMA_DIR", str(BACKEND_DIR / "chroma_db")))

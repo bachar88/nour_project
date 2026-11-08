@@ -23,7 +23,7 @@ export default function TopBar({ onSearch, health }) {
         {health === false && <span className="pill danger">الخادم غير متصل</span>}
         {health?.demo && <span className="pill warn" title="نماذج تجريبية: الأجوبة ليست حقيقية">وضع تجريبي</span>}
         {health?.preview && (
-          <span className="pill warn" title="البحث بالكلمات المفتاحية بدل BGE-M3، والإجابة من Claude بدل allam-2-7b">
+          <span className="pill warn" title="البحث بالكلمات المفتاحية بدل BGE-M3، والإجابة من Claude بدل gpt-oss-120b">
             معاينة · بحث بالكلمات + Claude
           </span>
         )}
