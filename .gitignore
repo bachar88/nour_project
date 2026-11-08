@@ -4,7 +4,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 backend/.env
-backend/chroma_db/
 
 # Node
 frontend/node_modules/
@@ -15,3 +14,4 @@ frontend/dist/
 .vscode/
 .idea/
 frontend/dist-preview/
+.vercel/

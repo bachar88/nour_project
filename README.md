@@ -2,92 +2,76 @@
 
 Ask questions about **Salat** and get answers taken only from Maliki texts, **Al-Risala** (Ibn Abi Zayd al-Qayrawani) and **Mukhtasar al-Akhdari**. Every answer quotes its evidence word for word and opens the book at that passage.
 
+**Deploying:** see [DEPLOY.md](DEPLOY.md). Everything is hosted for free: Vercel, Supabase, Cloudflare Workers AI and Groq.
+
 ```
 nour_project/
-├── backend/            FastAPI + RAG (BGE-M3 → Chroma → reranker → Groq gpt-oss-120b)
+├── api/index.py            Vercel entry point → backend/app/main.py
+├── vercel.json             builds the site, routes /api/* to FastAPI
+├── requirements.txt        API runtime deps (fastapi, httpx, python-dotenv)
+├── backend/
 │   ├── app/
-│   │   ├── config.py       all settings (overridable with .env)
+│   │   ├── config.py       all settings (environment variables)
 │   │   ├── chunking.py     books → babs → units → segments → chunks, quote matching
 │   │   ├── rag.py          retrieval, adaptive selection, prompt, grounding check
-│   │   ├── models.py       real model wrappers (loaded lazily)
-│   │   ├── dev_fakes.py    lightweight fake models (tests + demo mode)
+│   │   ├── store.py        Supabase (REST): units, vector search, writes
+│   │   ├── models.py       Cloudflare BGE-M3 + Groq clients (plain HTTP)
+│   │   ├── dev_fakes.py    offline stand-ins (tests + demo mode)
 │   │   └── main.py         API endpoints
-│   ├── data/               the two source texts (.txt)
-│   └── tests/              pytest (runs offline with the fake models)
-└── frontend/           React + Vite, RTL UI
-    └── src/
-        ├── App.jsx         state: view, messages, saved answers, open reader
-        ├── api.js          calls to the backend
-        └── components/     Sidebar, TopBar, ChatPanel, AnswerMessage, ReaderPanel, LibraryView, SavedView
+│   ├── supabase/schema.sql tables, match_chunks(), security
+│   ├── scripts/            index_supabase.py, evaluate.py, export_corpus.py
+│   ├── data/               the source texts (.txt)
+│   └── tests/              pytest, fully offline
+├── notebooks/nour_admin.ipynb   Colab: index the books + evaluate
+├── .github/workflows/keepalive.yml   daily ping so Supabase never pauses
+└── frontend/               React + Vite, RTL UI
 ```
 
-## Run it
+## How an answer is built
 
-**Backend** (Python 3.10+):
+1. **Chunking per book** (at indexing time). Al-Risala has almost no full stops and its page breaks fall mid-sentence, so pages are re-joined and split before ruling markers («ومن», «وأما»…). Al-Akhdari is split on `فصل:` / `(وسننه)` / `(وفضائله)`. Each chunk is embedded with BGE-M3 (Cloudflare) and stored in Supabase.
+2. **Retrieve.** The question is embedded with the same BGE-M3, and `match_chunks()` returns the 20 closest chunks for the chosen madhhab.
+3. **Adaptive selection** (no fixed TOP_K). Keep chunks within `COSINE_MARGIN` of the best one (max 3), merge overlapping chunks, and cap the context at 2,200 characters.
+4. **Score gate.** If the best chunk is below `MIN_COSINE_SCORE`, abstain without calling the LLM.
+5. **Extractive prompt.** gpt-oss-120b (low reasoning, reasoning hidden) must quote its evidence «…» word for word with the passage number.
+6. **Grounding check.** Each quote is searched for in the retrieved text (ignoring diacritics and punctuation). Found → «موثّق في النص» plus its exact position for highlighting. Not found → flagged as a likely hallucination.
+
+## Working on it
+
+**Demo mode** (no keys, no database; fake models, answers are not real; the UI shows «وضع تجريبي»):
 
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env                                     # then put your GROQ_API_KEY in .env
-uvicorn app.main:app --port 8000
+cd backend && pip install -r requirements.txt
+NOUR_DEMO=1 uvicorn app.main:app --port 8000
+cd ../frontend && npm install && npm run dev        # http://localhost:5173
 ```
 
-The first start downloads BGE-M3 and the reranker (about 4.5 GB) and builds the index (`backend/chroma_db/`). Later starts reuse it. A GPU helps but isn't required. On a weak machine, set `USE_RERANKER=false`.
+**Against the real services:** copy `backend/.env.example` to `backend/.env`, fill in the keys, and run `uvicorn app.main:app --port 8000` without `NOUR_DEMO`.
 
-**Frontend** (Node 18+), in a second terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev            # http://localhost:5173  (calls to /api are proxied to :8000)
-```
-
-### Demo mode (UI work without models or an API key)
-
-```bash
-cd backend && NOUR_FAKE_MODELS=1 uvicorn app.main:app --port 8000
-```
-
-Starts in seconds and uses fake models. Answers only quote retrieved text and are **not real** (the UI shows «وضع تجريبي»). Use it to work on the frontend.
-
-### Browser-only preview (one HTML file)
-
-```bash
-cd backend && python -m scripts.export_corpus     # refresh frontend/src/preview/corpus.json
-cd ../frontend && npm run build:preview           # → dist-preview/index.html
-```
-
-Runs without the backend: keyword search (BM25) instead of BGE-M3 + reranker, and Claude (artifact `sample` capability) instead of Groq. Good for showing the UI. It doesn't measure gpt-oss-120b's quality.
-
-### Tests
+**Tests** (offline: Supabase, Cloudflare and Groq are faked; the SQL schema was checked on Postgres + pgvector):
 
 ```bash
 cd backend && pytest -q
+```
+
+**Browser-only preview** (one HTML file: BM25 + Claude instead of the backend):
+
+```bash
+cd backend && python -m scripts.export_corpus && cd ../frontend && npm run build:preview
 ```
 
 ## API
 
 | Method | Path | What it returns |
 |---|---|---|
-| GET | `/api/health` | status, number of units/chunks, `demo` flag |
+| GET | `/api/health` (`?deep=1` also queries the DB) | status, model, missing env variables if any |
 | GET | `/api/madhahib` | the 4 madhahib and which are available (Maliki for now) |
 | GET | `/api/books?madhhab=maliki` | books and their babs (for «مكتبتي») |
 | GET | `/api/books/{book}/babs/{i}` | all units of a bab + prev/next (for the reader) |
-| POST | `/api/ask` `{question, madhhab}` | answer, evidence (quote, unit, character spans to highlight), grounding status, passages used |
-
-## How an answer is built (same logic as the v2 notebook)
-
-1. **Chunking per book.** Al-Risala has almost no full stops and its page breaks fall mid-sentence, so pages are re-joined and split before ruling markers («ومن», «وأما»…). Al-Akhdari is split on `فصل:` / `(وسننه)` / `(وفضائله)`.
-2. **Retrieve 20 → rerank → keep only chunks scoring ≥ 50% of the best (max 3)**, merge overlapping chunks, and cap the context at 2,200 characters. No fixed TOP_K: a large one made the 7B model mix near-miss rulings into its answer.
-3. **Score gate.** If nothing is relevant enough, the backend abstains without calling the LLM.
-4. **Extractive prompt.** The model must quote its evidence «…» word for word with the passage number.
-5. **Grounding check.** Each quote is searched for in the retrieved text (ignoring diacritics and punctuation). Found → «موثّق في النص» plus its exact position for highlighting. Not found → flagged as a likely hallucination.
-
-All thresholds are in `backend/app/config.py` and can be changed in `.env`.
+| POST | `/api/ask` `{question, madhhab}` | answer, evidence (quote, unit, spans to highlight), grounding, passages, `top_score` |
 
 ## Next steps
 
-- Move vectors from Chroma to **Supabase pgvector**, as planned. Only `RagEngine.ensure_index` and `RagEngine.retrieve` touch the vector store.
-- Add the other madhahib (one source pair each, plus an entry in `config.py` → `sources` and `MADHAHIB`).
-- Add the Baghawi tafsir as a separate index.
+- Tune `MIN_COSINE_SCORE` / `COSINE_MARGIN` with the Colab evaluation (step 4) once the real index exists.
+- Add the other madhahib (one source pair each: see the end of DEPLOY.md).
+- Add the Baghawi tafsir as its own index (same `chunks` table with its own `madhhab`/source key, or a second table).

@@ -9,6 +9,10 @@ def test_retrieval_finds_right_text(make_engine):
     assert len(r["passages"]) <= e.settings.max_k
 
 
+def test_madhhab_filter(make_engine):
+    assert make_engine().retrieve("مسافة قصر الصلاة", "hanafi")["candidates"] == []
+
+
 def test_merge_removes_overlap(make_engine):
     e = make_engine()
     unit_chunks = [c for c in e.corpus.chunks if c.metadata["unit_key"] == "akhdari-06-000"][:2]
@@ -48,8 +52,9 @@ def test_model_abstention(make_engine):
 def test_api(make_engine):
     from app.main import app
     app.state.engine = make_engine()
-    with TestClient(app) as c:
-        assert c.get("/api/health").json()["index_ready"] is True
+    try:
+        c = TestClient(app)
+        assert c.get("/api/health?deep=1").json()["db"] == "ok"
         books = c.get("/api/books").json()
         assert {b["key"] for b in books} == {"risala", "akhdari"}
         bab = c.get("/api/books/akhdari/babs/6").json()
@@ -58,4 +63,5 @@ def test_api(make_engine):
         r = c.post("/api/ask", json={"question": "كم عدد سجدات القرآن", "madhhab": "maliki"})
         assert r.status_code == 200 and r.json()["passages"]
         assert c.post("/api/ask", json={"question": "سؤال", "madhhab": "hanafi"}).status_code == 400
-    app.state.engine = None
+    finally:
+        app.state.engine = None

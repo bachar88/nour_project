@@ -1,4 +1,4 @@
-"""Retrieve → rerank → adaptive selection → merge → generate → check the quotes."""
+"""Question → BGE-M3 vector → Supabase vector search → adaptive selection → merge → LLM → quote check."""
 from __future__ import annotations
 
 import logging
@@ -30,96 +30,40 @@ ANSWER_RE = re.compile(r"الجواب\s*:\s*(.*?)(?=\n\s*الدليل\s*:|$)", r
 
 
 class RagEngine:
-    def __init__(self, corpus: Corpus, settings: Settings, embedder=None, reranker=None, llm=None,
-                 chroma_client=None):
+    """`store` needs .match(vector, madhhab, count) -> rows with id, unit_key, seg_start, seg_end, text, similarity.
+    `embedder` needs .encode(texts); `llm` needs .complete(messages)."""
+
+    def __init__(self, corpus: Corpus, settings: Settings, embedder, store, llm):
         self.corpus = corpus
         self.settings = settings
-        self._embedder, self._reranker, self._llm = embedder, reranker, llm
-        self._chroma_client = chroma_client
-        self.coll = None
-
-    # ---------- lazy model loading ----------
-    @property
-    def embedder(self):
-        if self._embedder is None:
-            from .models import SentenceTransformerEmbedder
-            log.info("Loading embedder %s", self.settings.embed_model)
-            self._embedder = SentenceTransformerEmbedder(self.settings)
-        return self._embedder
-
-    @property
-    def reranker(self):
-        if self._reranker is None and self.settings.use_reranker:
-            from .models import CrossEncoderReranker
-            log.info("Loading reranker %s", self.settings.rerank_model)
-            self._reranker = CrossEncoderReranker(self.settings)
-        return self._reranker
-
-    @property
-    def llm(self):
-        if self._llm is None:
-            from .models import GroqLLM
-            self._llm = GroqLLM(self.settings)
-        return self._llm
-
-    # ---------- index ----------
-    def ensure_index(self) -> str:
-        """Reuse the Chroma collection if texts/settings are unchanged, otherwise rebuild it."""
-        import chromadb
-        client = self._chroma_client or chromadb.PersistentClient(path=str(self.settings.chroma_dir))
-        name = self.settings.collection
-        try:
-            coll = client.get_collection(name)
-            if (coll.metadata or {}).get("fingerprint") != self.corpus.fingerprint:
-                client.delete_collection(name)
-                coll = None
-        except Exception:
-            coll = None
-        if coll is not None:
-            self.coll = coll
-            return "reused"
-        t0 = time.time()
-        coll = client.create_collection(
-            name, metadata={"hnsw:space": "cosine", "fingerprint": self.corpus.fingerprint})
-        chunks = self.corpus.chunks
-        vecs = self.embedder.encode([c.embed_text for c in chunks])
-        for i in range(0, len(chunks), 500):
-            part = chunks[i:i + 500]
-            coll.add(ids=[c.id for c in part], documents=[c.text for c in part],
-                     metadatas=[c.metadata for c in part],
-                     embeddings=[list(map(float, v)) for v in vecs[i:i + 500]])
-        self.coll = coll
-        log.info("Indexed %d chunks in %.1fs", len(chunks), time.time() - t0)
-        return "built"
+        self.embedder, self.store, self.llm = embedder, store, llm
 
     # ---------- retrieval ----------
     def retrieve(self, query: str, madhhab: str) -> dict:
-        if self.coll is None:
-            self.ensure_index()
         q_vec = self.embedder.encode([normalize_ar(query)])[0]
-        res = self.coll.query(query_embeddings=[list(map(float, q_vec))],
-                              n_results=min(self.settings.fetch_k, self.coll.count()),
-                              where={"madhhab": madhhab},
-                              include=["documents", "metadatas", "distances"])
-        cands = [{"text": d, "metadata": m, "vec_score": 1 - dist, "score": 1 - dist}
-                 for d, m, dist in zip(res["documents"][0], res["metadatas"][0], res["distances"][0])]
-        if self.reranker is not None and cands:
-            for c, s in zip(cands, self.reranker.score(query, [c["text"] for c in cands])):
-                c["score"] = s
-            cands.sort(key=lambda c: -c["score"])
+        rows = self.store.match(q_vec, madhhab, self.settings.fetch_k)
+        cands = []
+        for r in rows:
+            unit = self.corpus.units.get(r["unit_key"])
+            if unit is None:  # index and units out of sync: skip rather than crash
+                continue
+            book = self.corpus.books[unit.book_key]
+            cands.append({"text": r["text"], "score": float(r["similarity"]), "metadata": {
+                "book_key": unit.book_key, "book": book.title, "author": book.author,
+                "bab_index": unit.bab_index, "bab_title": unit.bab_title, "section": unit.section,
+                "unit_key": unit.key, "seg_start": r["seg_start"], "seg_end": r["seg_end"]}})
+        cands.sort(key=lambda c: -c["score"])
         return {"candidates": cands, "passages": self.select_context(cands)}
 
     def select_context(self, cands: list[dict]) -> list[dict]:
         """Keep only chunks close to the best one (max_k), merge, and respect a size budget.
-        A fixed large TOP_K feeds the 7B model near-miss rulings, which it then mixes in."""
+        A fixed large TOP_K feeds the model near-miss rulings, which it then mixes in."""
         if not cands:
             return []
         s, top = self.settings, cands[0]["score"]
-        if self.reranker is not None:
-            thr = max(s.min_rerank_score, s.rel_cutoff * top)
-        else:
-            thr = max(s.min_cosine_score, top - s.cosine_margin)
-        kept = [c for c in cands if c["score"] >= thr][:s.max_k]
+        if top < s.min_cosine_score:  # gate: nothing relevant enough → abstain without calling the LLM
+            return []
+        kept = [c for c in cands if c["score"] >= top - s.cosine_margin][:s.max_k]
         out, total = [], 0
         for p in self.merge_hits(kept):
             if out and total + len(p["text"]) > s.max_context_chars:
@@ -193,8 +137,9 @@ class RagEngine:
         passages = r["passages"]
         result = {"question": question, "madhhab": madhhab, "answer": ABSTAIN_TEXT, "raw": "",
                   "evidence": [], "grounding": "n/a", "abstained": None,
-                  "passages": [self._public_passage(p) for p in passages], "tokens": 0}
-        if not passages:  # score gate: nothing relevant enough → no LLM call
+                  "passages": [self._public_passage(p) for p in passages], "tokens": 0,
+                  "top_score": round(r["candidates"][0]["score"], 4) if r["candidates"] else None}
+        if not passages:
             result["abstained"] = "retrieval"
         else:
             raw, tokens = self.llm.complete(self.build_messages(question, passages))

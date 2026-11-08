@@ -1,42 +1,53 @@
-"""Lightweight stand-ins for the real models (no download, no GPU, no API key).
-Used by the tests and by demo mode: NOUR_FAKE_MODELS=1 uvicorn app.main:app
+"""Lightweight stand-ins for the hosted services (no network, no API key, no database).
+Used by the tests and by demo mode: NOUR_DEMO=1 uvicorn app.main:app
 Answers in demo mode are NOT real — they only quote retrieved text to exercise the UI."""
+from __future__ import annotations
+
+import dataclasses
 import hashlib
-import re
+import math
 
-import numpy as np
+from .chunking import Corpus, build_corpus, normalize_ar
+from .config import Settings
 
-from .chunking import normalize_ar
-
-
-def _words(t):
-    return re.findall(r"\w+", normalize_ar(t))
+DIM = 512
 
 
 class FakeEmbedder:
-    """Bag of character trigrams hashed into 512 dims, L2-normalized."""
+    """Bag of character trigrams hashed into 512 dims, L2-normalized (pure Python)."""
     def encode(self, texts):
-        out = np.zeros((len(texts), 512), dtype=np.float32)
-        for i, t in enumerate(texts):
+        out = []
+        for t in texts:
+            v = [0.0] * DIM
             t = normalize_ar(t)
             for j in range(len(t) - 2):
-                h = int(hashlib.md5(t[j:j + 3].encode()).hexdigest(), 16) % 512
-                out[i, h] += 1
-            n = np.linalg.norm(out[i])
-            if n:
-                out[i] /= n
+                v[int(hashlib.md5(t[j:j + 3].encode()).hexdigest(), 16) % DIM] += 1
+            n = math.sqrt(sum(x * x for x in v)) or 1.0
+            out.append([x / n for x in v])
         return out
 
 
-class FakeReranker:
-    """Share of the question's words (len > 2) found in the text."""
-    def score(self, query, texts):
-        q = {w for w in _words(query) if len(w) > 2}
-        return [len(q & set(_words(t))) / max(1, len(q)) for t in texts]
+class MemoryStore:
+    """Same .match() contract as SupabaseStore, over chunks held in memory."""
+    def __init__(self, corpus: Corpus, embedder):
+        self.rows = [{"id": c.id, "unit_key": c.metadata["unit_key"], "madhhab": c.metadata["madhhab"],
+                      "seg_start": c.metadata["seg_start"], "seg_end": c.metadata["seg_end"], "text": c.text}
+                     for c in corpus.chunks]
+        self.vecs = embedder.encode([c.embed_text for c in corpus.chunks])
+        self.calls = 0
+
+    def match(self, embedding, madhhab, count):
+        self.calls += 1
+        scored = [dict(r, similarity=sum(a * b for a, b in zip(embedding, v)))
+                  for r, v in zip(self.rows, self.vecs) if r["madhhab"] == madhhab]
+        return sorted(scored, key=lambda r: -r["similarity"])[:count]
+
+    def ping(self):
+        return True
 
 
 class FakeLLM:
-    """mode='quote': quotes 6 words of passage [1]; 'invent': quotes text that is not there;
+    """mode='quote': quotes 12 words of passage [1]; 'invent': quotes text that is not there;
     'abstain': returns the abstention sentence."""
     def __init__(self, mode="quote"):
         self.mode = mode
@@ -53,3 +64,15 @@ class FakeLLM:
         quote = " ".join(first.split()[:12])
         return (f"الجواب: (وضع تجريبي) هذا جواب مولَّد آليًا من المقطع الأول دون نموذج لغوي.\n"
                 f"الدليل: «{quote}» [1]"), 50
+
+
+# Trigram vectors give lower cosine scores than BGE-M3, so demo mode uses looser thresholds.
+DEMO_OVERRIDES = {"min_cosine_score": 0.2, "cosine_margin": 0.08}
+
+
+def demo_engine(settings: Settings, llm_mode: str = "quote"):
+    from .rag import RagEngine
+    s = dataclasses.replace(settings, **DEMO_OVERRIDES)
+    corpus = build_corpus(s)  # from backend/data/*.txt
+    emb = FakeEmbedder()
+    return RagEngine(corpus, s, emb, MemoryStore(corpus, emb), FakeLLM(llm_mode))

@@ -27,7 +27,14 @@ export default function TopBar({ onSearch, health }) {
             معاينة · بحث بالكلمات + Claude
           </span>
         )}
-        {health && !health.demo && !health.preview && <span className="pill ok">متصل · {health.llm}</span>}
+        {health?.status === "misconfigured" && (
+          <span className="pill danger" title={`متغيرات ناقصة: ${(health.missing || []).join(", ")}`}>
+            إعداد الخادم ناقص
+          </span>
+        )}
+        {health && !health.demo && !health.preview && health.status === "ok" && (
+          <span className="pill ok">متصل · {health.llm.replace(/^openai\//, "")}</span>
+        )}
       </div>
     </header>
   );

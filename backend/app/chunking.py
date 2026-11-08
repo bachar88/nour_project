@@ -187,9 +187,39 @@ def build_corpus(settings: Settings) -> Corpus:
                     ))
 
     fingerprint = hashlib.md5(("".join(raw_texts) + repr((
-        settings.embed_model, settings.chunk_target_chars, settings.max_segment_chars,
+        settings.cf_embed_model, settings.chunk_target_chars, settings.max_segment_chars,
         settings.segment_overlap, settings.min_chunk_chars, MARKERS))).encode()).hexdigest()
     return Corpus(books, units, chunks, fingerprint)
+
+
+def corpus_from_units(rows: list[dict]) -> Corpus:
+    """Rebuild books/units from the Supabase `units` table (what the API serves in production)."""
+    books: dict[str, Book] = {}
+    units: dict[str, Unit] = {}
+    for r in sorted(rows, key=lambda r: (r["book_key"], r["bab_index"], r["number"])):
+        book = books.get(r["book_key"])
+        if book is None:
+            book = books[r["book_key"]] = Book(r["book_key"], r["book"], r["author"], r["madhhab"])
+        while len(book.babs) <= r["bab_index"]:
+            book.babs.append({"index": len(book.babs), "title": "", "unit_keys": []})
+        bab = book.babs[r["bab_index"]]
+        bab["title"] = r["bab_title"]
+        bab["unit_keys"].append(r["key"])
+        units[r["key"]] = Unit(r["key"], r["book_key"], r["bab_index"], r["bab_title"],
+                               r["section"], r["number"], list(r["segments"]))
+    # Bab indices stay as stored (units and links refer to them); a gap stays as an empty bab.
+    return Corpus(books, units, [], "")
+
+
+def unit_rows(corpus: Corpus) -> list[dict]:
+    """Corpus → rows for the Supabase `units` table (inverse of corpus_from_units)."""
+    rows = []
+    for u in corpus.units.values():
+        b = corpus.books[u.book_key]
+        rows.append({"key": u.key, "book_key": u.book_key, "book": b.title, "author": b.author,
+                     "madhhab": b.madhhab, "bab_index": u.bab_index, "bab_title": u.bab_title,
+                     "section": u.section, "number": u.number, "segments": u.segments})
+    return rows
 
 
 # ---------- quote matching (grounding + highlight) ----------

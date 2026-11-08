@@ -1,11 +1,4 @@
-fastapi>=0.115
+# Local development / tests (the deployed API only needs ../requirements.txt)
+-r ../requirements.txt
 uvicorn[standard]>=0.30
-python-dotenv>=1.0
-chromadb>=0.5
-sentence-transformers>=3.0
-groq>=0.11
-numpy
-
-# tests
 pytest>=8
-httpx>=0.27
