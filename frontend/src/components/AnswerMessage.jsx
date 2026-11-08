@@ -5,7 +5,7 @@ import { BOOK_STYLE } from "../highlight.jsx";
 function GroundingBadge({ found }) {
   return found ? (
     <span className="badge ok" title="الاقتباس موجود حرفيًا في النص المسترجع">
-      <Icon.Check width={14} height={14} /> موثّق في النص
+      <Icon.Check width={14} height={14} /> الاقتباس موجود في النص
     </span>
   ) : (
     <span className="badge warn" title="لم يُعثر على هذا الاقتباس في النص: قد يكون من اختلاق النموذج">
