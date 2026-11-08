@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icons.jsx";
 import AnswerMessage from "./AnswerMessage.jsx";
+import FeedbackBar from "./FeedbackBar.jsx";
 
 const SUGGESTIONS = [
   "ما هي فرائض الصلاة؟",
@@ -13,6 +14,7 @@ const time = (iso) => new Date(iso).toLocaleTimeString("ar-TN", { hour: "2-digit
 
 export default function ChatPanel({
   messages, loading, onAsk, madhahib, madhhab, onMadhhab, onOpen, onSave, savedIds,
+  picks = {}, onPick, onClearPick, onFeedback,
 }) {
   const [draft, setDraft] = useState("");
   const endRef = useRef(null);
@@ -72,7 +74,11 @@ export default function ChatPanel({
           }
           return (
             <AnswerMessage key={m.id} result={m.result} onOpen={onOpen}
-                           onSave={() => onSave(m)} isSaved={savedIds.has(m.id)} />
+                           onSave={() => onSave(m)} isSaved={savedIds.has(m.id)}>
+              <FeedbackBar msg={m} picked={picks[m.id]} onPick={() => onPick(m)}
+                           onClearPick={() => onClearPick(m.id)}
+                           onSend={(rating, extra) => onFeedback(m, rating, extra)} />
+            </AnswerMessage>
           );
         })}
 

@@ -2,7 +2,7 @@
 
 Ask questions about **Salat** and get answers taken only from Maliki texts, **Al-Risala** (Ibn Abi Zayd al-Qayrawani) and **Mukhtasar al-Akhdari**. Every answer quotes its evidence word for word and opens the book at that passage.
 
-**Deploying:** see [DEPLOY.md](DEPLOY.md). Everything is hosted for free: Vercel, Supabase, Cloudflare Workers AI and Groq.
+**Deploying:** see [DEPLOY.md](DEPLOY.md). **Learning from mistakes** (👍/👎, corrections, evaluation): see [LEARNING.md](LEARNING.md). Everything is hosted for free: Vercel, Supabase, Cloudflare Workers AI and Groq.
 
 ```
 nour_project/
@@ -16,10 +16,12 @@ nour_project/
 │   │   ├── rag.py          retrieval, adaptive selection, prompt, grounding check
 │   │   ├── store.py        Supabase (REST): units, vector search, writes
 │   │   ├── models.py       Cloudflare BGE-M3 + Groq clients (plain HTTP)
+│   │   ├── learning.py     YOUR functions for the learning loop (see LEARNING.md)
 │   │   ├── dev_fakes.py    offline stand-ins (tests + demo mode)
 │   │   └── main.py         API endpoints
-│   ├── supabase/schema.sql tables, match_chunks(), security
-│   ├── scripts/            index_supabase.py, evaluate.py, export_corpus.py
+│   ├── supabase/           schema.sql (books, vectors) + learning.sql (feedback, corrections, eval runs)
+│   ├── eval/golden.jsonl   the test set: question → sentence that must be quoted
+│   ├── scripts/            index_supabase.py, evaluate.py, review_feedback.py, export_corpus.py
 │   ├── data/               the source texts (.txt)
 │   └── tests/              pytest, fully offline
 ├── notebooks/nour_admin.ipynb   Colab: index the books + evaluate
@@ -68,6 +70,7 @@ cd backend && python -m scripts.export_corpus && cd ../frontend && npm run build
 | GET | `/api/madhahib` | the 4 madhahib and which are available (Maliki for now) |
 | GET | `/api/books?madhhab=maliki` | books and their babs (for «مكتبتي») |
 | GET | `/api/books/{book}/babs/{i}` | all units of a bab + prev/next (for the reader) |
+| POST | `/api/feedback` `{question, rating, comment?, correct_unit_key?, correct_quote?, …}` | stores a 👍 / 👎 report for review |
 | POST | `/api/ask` `{question, madhhab}` | answer, evidence (quote, unit, spans to highlight), grounding, passages, `top_score` |
 
 ## Next steps

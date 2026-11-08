@@ -52,4 +52,4 @@ def test_unknown_book(corpus):
 def test_evaluate_runs(make_engine, capsys):
     assert evaluate.main([], engine=make_engine()) == 0
     out = capsys.readouterr().out
-    assert "Hit in context" in out and "OOS" in out
+    assert "Scores (%)" in out and "OOS" in out and "retrieval_hit" in out

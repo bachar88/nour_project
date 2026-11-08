@@ -64,6 +64,12 @@ class Settings:
     cosine_margin: float = _env("COSINE_MARGIN", 0.06, float)        # keep chunks within this of the best
     max_context_chars: int = _env("MAX_CONTEXT_CHARS", 2200, int)
 
+    # Learning loop: past corrections shown to the model as worked examples (app/learning.py).
+    # Off by default: turn on (USE_CORRECTIONS=true on Vercel) once learning.py is written.
+    use_corrections: bool = _env("USE_CORRECTIONS", False, bool)
+    correction_min_similarity: float = _env("CORRECTION_MIN_SIMILARITY", 0.85, float)
+    max_correction_examples: int = _env("MAX_CORRECTION_EXAMPLES", 2, int)
+
     # Frontend origin(s) allowed by CORS, comma-separated (not needed when site + API share a domain)
     cors_origins: tuple = tuple(_env("CORS_ORIGINS", "http://localhost:5173").split(","))
 
