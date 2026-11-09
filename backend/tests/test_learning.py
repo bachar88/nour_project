@@ -45,7 +45,7 @@ def test_empty_quote_is_rejected():
 
 # ---------- pick_corrections ----------
 def rows(*sims):
-    return [{"id": i, "question": f"q{i}", "answer": "a", "evidence": ["e"], "similarity": s}
+    return [{"id": i, "question": f"q{i}", "answer": "a", "evidence": [f"جملة الدليل رقم {i}"], "similarity": s}
             for i, s in enumerate(sims)]
 
 
@@ -56,6 +56,13 @@ def test_threshold_and_limit():
 
 def test_nothing_close_enough():
     assert call(learning.pick_corrections, rows(0.7, 0.6), 0.85, 2) == []
+
+
+def test_same_evidence_counts_once():
+    same = rows(0.95, 0.93, 0.9)
+    same[1]["evidence"] = list(same[0]["evidence"])  # #1 teaches the same sentence as #0
+    out = call(learning.pick_corrections, same, 0.85, 2)
+    assert [r["id"] for r in out] == [0, 2]
 
 
 def test_no_candidates():

@@ -97,7 +97,10 @@ def test_corrections_reach_the_prompt(make_engine, fake_learning):
     assert r["corrections_used"] == [1]
 
 
-def test_corrections_off_or_unwritten_change_nothing(make_engine):
+def test_corrections_off_or_unwritten_change_nothing(make_engine, monkeypatch):
+    def not_written(*args):
+        raise NotImplementedError
+    monkeypatch.setattr(learning, "pick_corrections", not_written)  # as if learning.py were empty
     e = make_engine()
     e.store = TableStore(e.store)
     e.store.insert("corrections", {"madhhab": "maliki", "question": "x", "answer": "y", "evidence": [KEY]})
@@ -118,7 +121,10 @@ def test_evaluate_with_answers_and_save(make_engine, fake_learning, capsys):
     assert "Scores (%)" in capsys.readouterr().out
 
 
-def test_evaluate_reports_unwritten_scoring(make_engine, capsys):
+def test_evaluate_reports_unwritten_scoring(make_engine, capsys, monkeypatch):
+    def not_written(*args):
+        raise NotImplementedError
+    monkeypatch.setattr(learning, "evidence_matches", not_written)
     assert evaluate.main(["--llm"], engine=make_engine(), sleep=0) == 0
     assert "not implemented yet" in capsys.readouterr().out
 

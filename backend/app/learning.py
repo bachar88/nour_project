@@ -1,13 +1,10 @@
-"""The "learning" logic of Nour — YOUR part to write (Boch).
+"""The "learning" logic of Nour: three small functions, each with the choices it makes written
+in its docstring. Everything around them (database, API, UI, evaluation, prompt injection) is
+wired elsewhere. If one of them raises NotImplementedError, the callers degrade safely
+(evaluate.py reports it; the site skips corrections).
 
-Three small functions. Everything around them (database, API, UI, evaluation, prompt
-injection) is already wired. Until a function is written it raises NotImplementedError,
-and the code that calls it degrades safely:
-- evaluate.py prints "evidence score: not implemented yet";
-- the site does not add corrections to the prompt (and USE_CORRECTIONS is off by default).
-
-Check your work with:  cd backend && pytest -q tests/test_learning.py
-(those tests are skipped while a function is not implemented, and run once it is.)
+Tests: cd backend && pytest -q tests/test_learning.py
+Tuning knobs: the constants below, and on Vercel CORRECTION_MIN_SIMILARITY / MAX_CORRECTION_EXAMPLES.
 
 Helpers you may use (already in the project):
 - app.chunking.normalize_ar(text): removes diacritics/tatweel, unifies alef forms, collapses spaces.
@@ -15,6 +12,29 @@ Helpers you may use (already in the project):
   diacritics and punctuation; None if it does not appear.
 """
 from __future__ import annotations
+
+import re
+
+from .chunking import normalize_ar
+
+MIN_WORDS = 3          # a quote or key shorter than this is too vague to count as evidence
+MIN_COVERAGE = 0.6     # a quote shorter than the key must still contain ≥ 60% of the key's words, in order
+MAX_FIELD_CHARS = 220  # longest answer / evidence sentence copied into a worked example
+
+
+def _words(text: str) -> list[str]:
+    """Normalized words: no diacritics, unified alef, no punctuation."""
+    return re.sub(r"[^\w\s]", " ", normalize_ar(text)).split()
+
+
+def _contains(longer: list[str], shorter: list[str]) -> bool:
+    """True if `shorter` appears as consecutive words inside `longer`."""
+    return f" {' '.join(shorter)} " in f" {' '.join(longer)} "
+
+
+def _clip(text: str, limit: int = MAX_FIELD_CHARS) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + " …"
 
 
 def evidence_matches(quote: str, expected: str) -> bool:
@@ -32,9 +52,22 @@ def evidence_matches(quote: str, expected: str) -> bool:
     Should return False for a different sentence that only shares some words
     (e.g. both contain «قبل السلام»).
 
-    Things to decide yourself: is a very short quote (2–3 words) enough? Does word order matter?
+    Choices made: under 3 words is too vague; word order matters (consecutive words);
+    a quote that is part of the key must cover at least 60% of the key's words.
     """
-    raise NotImplementedError
+    key = _words(expected)
+    if len(key) < MIN_WORDS:
+        return False
+    # the model may elide with «...» / «…»: each piece is checked on its own
+    for piece in re.split(r"\.\.\.|…", quote):
+        q = _words(piece)
+        if len(q) < MIN_WORDS:
+            continue
+        if _contains(q, key):                                         # quoted the key (and maybe more)
+            return True
+        if _contains(key, q) and len(q) >= MIN_COVERAGE * len(key):   # quoted most of the key
+            return True
+    return False
 
 
 def pick_corrections(candidates: list[dict], min_similarity: float, max_examples: int) -> list[dict]:
@@ -48,10 +81,21 @@ def pick_corrections(candidates: list[dict], min_similarity: float, max_examples
 
     Return the corrections to use (possibly an empty list), best first.
 
-    Things to decide yourself: only keep near-duplicates of the new question? Avoid two
-    corrections that say the same thing? What if the best one is just under the threshold?
+    Choices made: strict threshold (a near miss is not shown: a wrong example is worse than none);
+    two corrections citing the same evidence count once (keep the closest).
     """
-    raise NotImplementedError
+    picked, seen = [], set()
+    for c in sorted(candidates, key=lambda c: -c.get("similarity", -1.0)):
+        if c.get("similarity", -1.0) < min_similarity:
+            break                                   # sorted: everything after is farther
+        evidence_key = tuple(sorted(" ".join(_words(e)) for e in c.get("evidence") or []))
+        if not evidence_key or evidence_key in seen:
+            continue                                # no evidence, or same lesson as a closer one
+        seen.add(evidence_key)
+        picked.append(c)
+        if len(picked) >= max_examples:
+            break
+    return picked
 
 
 def format_example(correction: dict) -> str:
@@ -65,4 +109,7 @@ def format_example(correction: dict) -> str:
     answer in («الجواب: …» then «الدليل: «…»»), so the model copies the format too.
     The model is told to quote only from the numbered passages, never from the examples.
     """
-    raise NotImplementedError
+    lines = [f"سؤال مشابه: {_clip(correction['question'])}",
+             f"الجواب: {_clip(correction['answer'])}"]
+    lines += [f"الدليل: «{_clip(e)}»" for e in correction.get("evidence") or []]
+    return "\n".join(lines)
