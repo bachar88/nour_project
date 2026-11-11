@@ -53,3 +53,15 @@ def test_evaluate_runs(make_engine, capsys):
     assert evaluate.main([], engine=make_engine()) == 0
     out = capsys.readouterr().out
     assert "Scores (%)" in out and "OOS" in out and "retrieval_hit" in out
+
+
+def test_inspect_questions(make_engine, capsys):
+    from scripts import inspect_questions
+    import dataclasses
+    e = make_engine()
+    rep = inspect_questions.show_retrieval(e, ["ما هي مسافة قصر الصلاة للمسافر؟", "qwerty zxcv"], top=3)
+    out = capsys.readouterr().out
+    assert len(rep) == 2 and "→ sent" in out and "passage [1] sent" in out
+    assert rep[1]["gated"] is True and "BLOCKED" in out
+    res = inspect_questions.show_answers(e, ["كم عدد سجدات القرآن"], sleep=0)
+    assert res[0]["grounding"] == "grounded" and "الجواب" in capsys.readouterr().out
