@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 
-from .chunking import normalize_ar
+from .chunking import conjunction_variants, normalize_ar
 
 MIN_WORDS = 3          # a quote or key shorter than this is too vague to count as evidence
 MIN_COVERAGE = 0.6     # a quote shorter than the key must still contain ≥ 60% of the key's words, in order
@@ -25,6 +25,12 @@ MAX_FIELD_CHARS = 220  # longest answer / evidence sentence copied into a worked
 def _words(text: str) -> list[str]:
     """Normalized words: no diacritics, unified alef, no punctuation."""
     return re.sub(r"[^\w\s]", " ", normalize_ar(text)).split()
+
+
+def _variants(words: list[str]) -> list[list[str]]:
+    """The words as given, plus with a leading «و»/«ف» dropped or added on the first word
+    (models often quote «أما السنة…» for the book's «وأما السنة…»)."""
+    return [v.split() for v in conjunction_variants(" ".join(words))] if words else [words]
 
 
 def _contains(longer: list[str], shorter: list[str]) -> bool:
@@ -53,7 +59,8 @@ def evidence_matches(quote: str, expected: str) -> bool:
     (e.g. both contain «قبل السلام»).
 
     Choices made: under 3 words is too vague; word order matters (consecutive words);
-    a quote that is part of the key must cover at least 60% of the key's words.
+    a quote that is part of the key must cover at least 60% of the key's words;
+    a leading «و»/«ف» dropped or added on the first word is tolerated.
     """
     key = _words(expected)
     if len(key) < MIN_WORDS:
@@ -63,10 +70,12 @@ def evidence_matches(quote: str, expected: str) -> bool:
         q = _words(piece)
         if len(q) < MIN_WORDS:
             continue
-        if _contains(q, key):                                         # quoted the key (and maybe more)
-            return True
-        if _contains(key, q) and len(q) >= MIN_COVERAGE * len(key):   # quoted most of the key
-            return True
+        for k in _variants(key):
+            if _contains(q, k):                                       # quoted the key (and maybe more)
+                return True
+        for qv in _variants(q):
+            if _contains(key, qv) and len(qv) >= MIN_COVERAGE * len(key):  # quoted most of the key
+                return True
     return False
 
 

@@ -78,3 +78,8 @@ def test_format_example_shows_method_and_format():
     assert c["question"] in text and KEY in text
     assert "الجواب" in text and "الدليل" in text
     assert len(text) < 600  # every example costs tokens
+
+
+def test_dropped_conjunction_still_matches():
+    assert call(learning.evidence_matches, "أما السنة الواحدة فلا سجود لها إلا السر والجهر",
+                "وأما السنة الواحدة فلا سجود لها إلا السر والجهر") is True
