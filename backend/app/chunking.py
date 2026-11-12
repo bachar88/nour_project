@@ -246,9 +246,26 @@ def _word_index(text: str) -> tuple[str, list[int]]:
     return "".join(out), pos
 
 
+CONJUNCTIONS = ("و", "ف")
+
+
+def conjunction_variants(norm_words: str):
+    """The same words with the leading «و»/«ف» of the first word dropped or added.
+    Models often quote «أما السنة…» for the book's «وأما السنة…» (or the reverse)."""
+    yield norm_words
+    first, _, rest = norm_words.partition(" ")
+    tail = f" {rest}" if rest else ""
+    if first[:1] in CONJUNCTIONS and len(first) > 2:
+        yield first[1:] + tail
+    else:
+        for c in CONJUNCTIONS:
+            yield c + first + tail
+
+
 def find_quote_spans(text: str, quote: str) -> list[tuple[int, int]] | None:
-    """Character spans of `quote` inside `text`, robust to diacritics and punctuation.
-    A quote elided with «...» / «…» is matched piece by piece. None if any piece is missing."""
+    """Character spans of `quote` inside `text`, robust to diacritics, punctuation and a leading
+    «و»/«ف» dropped or added. A quote elided with «...» / «…» is matched piece by piece.
+    None if any piece is missing."""
     norm_text, pos = _word_index(text)
     padded = f" {norm_text} "
     spans = []
@@ -256,9 +273,12 @@ def find_quote_spans(text: str, quote: str) -> list[tuple[int, int]] | None:
         norm_piece, _ = _word_index(piece)
         if not norm_piece:
             continue
-        idx = padded.find(f" {norm_piece} ")
-        if idx < 0:
+        for variant in conjunction_variants(norm_piece):
+            idx = padded.find(f" {variant} ")
+            if idx >= 0:
+                break
+        else:
             return None
-        start, end = idx, idx + len(norm_piece) - 1  # indices in norm_text
+        start, end = idx, idx + len(variant) - 1  # indices in norm_text
         spans.append((pos[start], pos[end] + 1))
     return spans or None

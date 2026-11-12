@@ -25,6 +25,7 @@ The repo belongs to `bachar88`: you need to be a collaborator (or the owner push
 
 1. supabase.com → **New project** (any name, e.g. `nour`; choose a region close to Tunisia, e.g. Frankfurt). Keep the database password somewhere safe.
 2. **SQL Editor** → **New query** → paste all of `backend/supabase/schema.sql` → **Run**. It creates `units`, `chunks`, `index_meta`, the `match_chunks()` function and turns Row Level Security on.
+   Then the same with `backend/supabase/learning.sql` (feedback, corrections, evaluation history — see [LEARNING.md](LEARNING.md)).
 3. **Project Settings → API**: copy the **Project URL** and the **secret key** (`sb_secret_…`; on older projects: the `service_role` key).
    ⚠ This key bypasses all security: put it only in Colab Secrets and Vercel, never in the frontend or in Git.
 

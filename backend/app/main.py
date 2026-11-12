@@ -8,11 +8,13 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from .chunking import find_quote_spans
 from .config import MADHAHIB, settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -60,6 +62,18 @@ def engine(request: Request):
 class AskRequest(BaseModel):
     question: str = Field(min_length=2, max_length=500)
     madhhab: str = "maliki"
+
+
+class FeedbackRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=500)
+    madhhab: str = "maliki"
+    rating: Literal[-1, 1]                                   # -1 = 👎, 1 = 👍
+    comment: str | None = Field(None, max_length=1000)
+    correct_unit_key: str | None = Field(None, max_length=40)
+    correct_quote: str | None = Field(None, min_length=3, max_length=800)
+    answer: str | None = Field(None, max_length=2000)        # what the user saw (for review)
+    evidence: list[dict] | None = Field(None, max_length=6)
+    passages: list[dict] | None = Field(None, max_length=6)
 
 
 @app.get("/api/health")
@@ -117,3 +131,22 @@ def ask(request: Request, body: AskRequest):
     except RuntimeError as exc:  # upstream service error (rate limit, bad key, ...)
         log.exception("ask failed")
         raise HTTPException(503, str(exc)) from exc
+
+
+@app.post("/api/feedback")
+def feedback(request: Request, body: FeedbackRequest):
+    """Store a 👍 / 👎 (and optionally the correct sentence picked in the reader) for later review
+    in the admin notebook. Nothing changes in the answers until a reviewer accepts it."""
+    e = engine(request)
+    if (body.correct_quote is None) != (body.correct_unit_key is None):
+        raise HTTPException(422, "correct_quote and correct_unit_key go together")
+    if body.correct_unit_key is not None:
+        unit = e.corpus.units.get(body.correct_unit_key)
+        if unit is None or not find_quote_spans(unit.text, body.correct_quote):
+            raise HTTPException(422, "the picked sentence is not in that unit")
+    try:
+        row = e.store.insert("feedback", body.model_dump())
+    except RuntimeError as exc:
+        log.exception("feedback insert failed")
+        raise HTTPException(503, "تعذّر حفظ الملاحظة، أعد المحاولة لاحقًا.") from exc
+    return {"id": row.get("id"), "status": "saved"}

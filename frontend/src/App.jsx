@@ -20,6 +20,8 @@ export default function App() {
   const [saved, setSaved] = useState(() => load("nour.saved", []));
   const [loading, setLoading] = useState(false);
   const [reader, setReader] = useState(null); // {bookKey, babIndex, unitKey?, spans?}
+  const [picking, setPicking] = useState(null); // id of the answer whose correct sentence is being picked
+  const [picks, setPicks] = useState({});       // answer id → {unitKey, quote}
 
   useEffect(() => {
     api.health().then(setHealth).catch(() => setHealth(false));
@@ -55,14 +57,43 @@ export default function App() {
   function newChat() {
     setMessages([]);
     setReader(null);
+    setPicking(null);
     setView("chat");
+  }
+
+  // ---- feedback (👍 / 👎) ----
+  function startPick(msg) {
+    const p = msg.result.passages[0];
+    setPicking(msg.id);
+    setReader({ bookKey: p.book_key, babIndex: p.bab_index, unitKey: p.unit_key, spans: [] });
+  }
+
+  function finishPick(picked) {
+    setPicks((all) => ({ ...all, [picking]: picked }));
+    setPicking(null);
+    setReader(null); // back to the form (needed on phones, where the reader covers the chat)
+  }
+
+  async function sendFeedback(msg, rating, { comment = null, picked = null } = {}) {
+    const r = msg.result;
+    await api.feedback({
+      question: msg.question, madhhab: r.madhhab || madhhab, rating, comment,
+      correct_unit_key: picked?.unitKey ?? null, correct_quote: picked?.quote ?? null,
+      answer: r.answer,
+      evidence: r.evidence.map(({ quote, passage, found }) => ({ quote, passage, found })),
+      passages: r.passages.map(({ book_key, unit_key, score }) => ({ book_key, unit_key, score })),
+    });
+    setMessages((all) => all.map((m) => (m.id === msg.id ? { ...m, feedback: rating === 1 ? "up" : "down" } : m)));
+    setPicks(({ [msg.id]: _, ...rest }) => rest);
   }
 
   const main = {
     chat: (
       <ChatPanel messages={messages} loading={loading} onAsk={ask}
                  madhahib={madhahib} madhhab={madhhab} onMadhhab={setMadhhab}
-                 onOpen={setReader} onSave={toggleSave} savedIds={savedIds} />
+                 onOpen={setReader} onSave={toggleSave} savedIds={savedIds}
+                 picks={picks} onPick={startPick} onFeedback={sendFeedback}
+                 onClearPick={(id) => setPicks(({ [id]: _, ...rest }) => rest)} />
     ),
     library: <LibraryView madhhab={madhhab} onOpen={setReader} active={reader} />,
     saved: <SavedView saved={saved} onOpen={setReader} onRemove={(id) => setSaved((l) => l.filter((s) => s.id !== id))} />,
@@ -76,8 +107,10 @@ export default function App() {
         <div className={`content ${reader ? "with-reader" : ""}`}>
           {main}
           {reader && (
-            <ReaderPanel target={reader} onClose={() => setReader(null)}
-                         onNavigate={(t) => setReader({ ...t, unitKey: null, spans: [] })} />
+            <ReaderPanel target={reader} onClose={() => { setReader(null); setPicking(null); }}
+                         onNavigate={(t) => setReader({ ...t, unitKey: null, spans: [] })}
+                         picking={picking !== null} onPicked={finishPick}
+                         onCancelPick={() => setPicking(null)} />
           )}
         </div>
       </div>

@@ -31,4 +31,6 @@ export const api = {
   bab: (bookKey, babIndex) => request(`/api/books/${bookKey}/babs/${babIndex}`),
   ask: (question, madhhab) =>
     request("/api/ask", { method: "POST", body: JSON.stringify({ question, madhhab }) }),
+  // 👍 / 👎 under an answer, optionally with the correct sentence picked in the reader
+  feedback: (payload) => request("/api/feedback", { method: "POST", body: JSON.stringify(payload) }),
 };

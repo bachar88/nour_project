@@ -41,7 +41,7 @@ function EvidenceCard({ ev, passage, onOpen }) {
   );
 }
 
-export default function AnswerMessage({ result, onOpen, onSave, isSaved }) {
+export default function AnswerMessage({ result, onOpen, onSave, isSaved, children }) {
   const [showSources, setShowSources] = useState(false);
   const abstained = Boolean(result.abstained);
 
@@ -85,6 +85,8 @@ export default function AnswerMessage({ result, onOpen, onSave, isSaved }) {
           </button>
         )}
       </footer>
+
+      {children}
 
       {showSources && (
         <ol className="passages">

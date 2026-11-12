@@ -6,6 +6,7 @@ import re
 import time
 
 from .chunking import Corpus, find_quote_spans, normalize_ar
+from . import learning
 from .config import Settings
 
 log = logging.getLogger("nour.rag")
@@ -18,6 +19,7 @@ SYSTEM_PROMPT = f"""أنت مساعد يستخرج الأحكام من نصوص 
 1. حدّد ما يُسأل عنه بالضبط: حكم، أو وقت، أو عدد، أو سبب، أو شرط، أو كيفية.
 2. المقطع الواحد قد يجمع مسائل كثيرة متقاربة الألفاظ. اختر الجملة التي تجيب عن السؤال فعلًا، لا الجملة التي تشترك معه في الكلمات فقط.
 3. قدّم القاعدة العامة التي ينصّ عليها الكتاب على المسائل المتفرعة عنها (مثل: «ومن نسي…»، «وإن طال…»، «إلا أن…»)، ولا تذكر المتفرعات إلا إذا سأل عنها السؤال.
+3ب. إذا سأل السؤال عن تعداد (ما هي…/ما أنواع…) فانقل الجملة التي تعدّد. وإذا قيّد السؤالُ التعدادَ بوصف لا يرد لفظه في النص (مثل: «التي يُسجد لسهوها»)، فانقل التعداد والقاعدة التي تبيّن ذلك الوصف معًا، ولا تنسب إلى الكتاب لفظًا لم يرد فيه.
 4. لا تكتب في الجواب إلا ما تدل عليه الجمل التي نقلتها، ولا تستعمل أي معلومة من خارج المقاطع.
 5. لا تُضف حكمًا أو وصفًا (واجب، سنة، فضيلة، مكروه...) إلا إذا ورد حرفيًا في النص.
 6. انقل كل جملة يقوم عليها الجواب حرفيًا بين «» دون تغيير أي كلمة، مع رقم المقطع بين معقوفين. إن احتجت جملتين فانقل الاثنتين.
@@ -29,6 +31,8 @@ SYSTEM_PROMPT = f"""أنت مساعد يستخرج الأحكام من نصوص 
 الدليل: «نص منقول حرفيًا» [رقم المقطع]
 الدليل: «نص منقول حرفيًا» [رقم المقطع] (عند الحاجة)"""
 QUOTE_RE = re.compile(r"«([^»]+)»\s*(?:\[(\d+)\])?")
+EXAMPLES_HEADER = ("أمثلة محلولة من تصحيحات سابقة لأسئلة مشابهة، لتوضيح طريقة اختيار الدليل فقط. "
+                   "لا تنقل منها شيئًا: انقل الدليل من المقاطع المرقّمة وحدها.")
 ANSWER_RE = re.compile(r"الجواب\s*:\s*(.*?)(?=\n\s*الدليل\s*:|$)", re.S)
 
 
@@ -56,7 +60,7 @@ class RagEngine:
                 "bab_index": unit.bab_index, "bab_title": unit.bab_title, "section": unit.section,
                 "unit_key": unit.key, "seg_start": r["seg_start"], "seg_end": r["seg_end"]}})
         cands.sort(key=lambda c: -c["score"])
-        return {"candidates": cands, "passages": self.select_context(cands)}
+        return {"candidates": cands, "passages": self.select_context(cands), "query_vector": q_vec}
 
     def select_context(self, cands: list[dict]) -> list[dict]:
         """Keep only chunks close to the best one (max_k), merge, and respect a size budget.
@@ -98,12 +102,30 @@ class RagEngine:
 
     # ---------- generation ----------
     @staticmethod
-    def build_messages(query: str, passages: list[dict]) -> list[dict]:
+    def build_messages(query: str, passages: list[dict], examples: list[str] | None = None) -> list[dict]:
         ctx = "\n\n".join(
             f"[{i}] ({p['metadata']['book']} — {p['metadata']['bab_title']})\n{p['text']}"
             for i, p in enumerate(passages, 1))
-        return [{"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"المقاطع:\n{ctx}\n\nالسؤال: {query}"}]
+        user = f"المقاطع:\n{ctx}\n\nالسؤال: {query}"
+        if examples:
+            user = (EXAMPLES_HEADER + "\n\n" + "\n\n---\n\n".join(examples) + "\n\n=====\n\n" + user)
+        return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
+
+    # ---------- learning loop ----------
+    def find_examples(self, query_vector, madhhab: str) -> list[dict]:
+        """Past corrections close to this question, chosen by learning.pick_corrections.
+        Returns [] when the feature is off, not written yet, or the lookup fails."""
+        s = self.settings
+        if not s.use_corrections or not hasattr(self.store, "match_corrections"):
+            return []
+        try:
+            rows = self.store.match_corrections(query_vector, madhhab, max(3, s.max_correction_examples))
+            return learning.pick_corrections(rows, s.correction_min_similarity, s.max_correction_examples)
+        except NotImplementedError:
+            log.warning("USE_CORRECTIONS is on but learning.pick_corrections is not written yet")
+        except Exception:  # never let the learning loop break an answer
+            log.exception("corrections lookup failed")
+        return []
 
     def parse_answer(self, raw: str, passages: list[dict]) -> tuple[str, list[dict], str]:
         """→ (short answer, evidence list, grounding status)."""
@@ -140,12 +162,21 @@ class RagEngine:
         passages = r["passages"]
         result = {"question": question, "madhhab": madhhab, "answer": ABSTAIN_TEXT, "raw": "",
                   "evidence": [], "grounding": "n/a", "abstained": None,
-                  "passages": [self._public_passage(p) for p in passages], "tokens": 0,
+                  "passages": [self._public_passage(p) for p in passages], "tokens": 0, "corrections_used": [],
                   "top_score": round(r["candidates"][0]["score"], 4) if r["candidates"] else None}
         if not passages:
             result["abstained"] = "retrieval"
         else:
-            raw, tokens = self.llm.complete(self.build_messages(question, passages))
+            used = self.find_examples(r["query_vector"], madhhab)
+            examples = []
+            for c in used:
+                try:
+                    examples.append(learning.format_example(c))
+                except NotImplementedError:
+                    log.warning("learning.format_example is not written yet: examples skipped")
+                    break
+            result["corrections_used"] = [c["id"] for c in used][:len(examples)]
+            raw, tokens = self.llm.complete(self.build_messages(question, passages, examples))
             result.update(raw=raw, tokens=tokens)
             if normalize_ar(ABSTAIN_TEXT[:20]) in normalize_ar(raw):
                 result["abstained"] = "model"

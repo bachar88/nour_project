@@ -38,3 +38,11 @@ def test_find_quote_spans_ignores_diacritics_and_punctuation():
     assert find_quote_spans(text, "كلام غير موجود") is None
     two = find_quote_spans(text, "الوضوء يجب ... ومن نسي")
     assert two and len(two) == 2
+
+
+def test_quote_with_dropped_or_added_conjunction():
+    text = "ولا يكون السجود القبلي إلا لترك سنتين فأكثر. وأما السنة الواحدة فلا سجود لها إلا السر والجهر،"
+    spans = find_quote_spans(text, "أما السنة الواحدة فلا سجود لها إلا السر والجهر")  # model dropped «و»
+    assert spans and "السنة الواحدة" in text[spans[0][0]:spans[0][1]]
+    assert find_quote_spans(text, "وأما السنتان فلا سجود لهما") is None              # different words: still rejected
+    assert find_quote_spans("فرائض الصلاة سبع", "وفرائض الصلاة سبع")                 # model added «و»
