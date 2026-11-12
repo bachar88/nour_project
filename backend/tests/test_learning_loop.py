@@ -56,8 +56,19 @@ def test_golden_sentences_exist_in_books():
     corpus = build_corpus(settings)
     texts = [u.text for u in corpus.units.values()]
     for case in evaluate.load_golden():
-        for e in case.get("expected_evidence", []):
-            assert any(find_quote_spans(t, e) for t in texts), e
+        if case.get("out_of_scope"):
+            continue
+        for group in evaluate.groups(case):
+            for e in group:
+                assert any(find_quote_spans(t, e) for t in texts), e
+
+
+def test_grouped_evidence_needs_every_group(fake_learning):
+    case = {"question": "q", "expected_groups": [["سنن الصلاة: الإقامة، والسورة التي بعد الفاتحة"],
+                                                 ["ولا يكون السجود القبلي إلا لترك سنتين فأكثر", "وأما السنة الواحدة فلا سجود لها"]]}
+    rule_only = ["ولا يكون السجود القبلي إلا لترك سنتين فأكثر"]
+    assert evaluate.evidence_hit(case, rule_only) is False
+    assert evaluate.evidence_hit(case, rule_only + ["سنن الصلاة: الإقامة، والسورة التي بعد الفاتحة"]) is True
 
 
 def test_feedback_endpoint(make_engine):
@@ -117,7 +128,7 @@ def test_evaluate_with_answers_and_save(make_engine, fake_learning, capsys):
     run = store.tables["eval_runs"][0]
     assert run["label"] == "t" and run["scores"]["retrieval_hit"] is not None
     assert run["scores"]["evidence_hit"] is not None and run["settings"]["prompt_md5"]
-    assert len(run["details"]) == 15
+    assert len(run["details"]) == len(evaluate.load_golden())
     assert "Scores (%)" in capsys.readouterr().out
 
 

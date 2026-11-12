@@ -33,17 +33,24 @@ def load_golden(path: Path = GOLDEN) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def groups(case: dict) -> list[list[str]]:
+    """Expected evidence as groups: EVERY group must be covered, ANY sentence of a group covers it.
+    - "expected_evidence": [a, b]           → one group: a OR b   (simple questions)
+    - "expected_groups": [[list], [r1, r2]] → list AND (r1 OR r2) (answers that combine passages)"""
+    return case.get("expected_groups") or [case["expected_evidence"]]
+
+
 def retrieval_hit(case: dict, passages: list[dict]) -> bool | None:
     if case.get("out_of_scope"):
         return None
-    return any(find_quote_spans(p["text"], e) for p in passages for e in case["expected_evidence"])
+    return all(any(find_quote_spans(p["text"], e) for p in passages for e in g) for g in groups(case))
 
 
 def evidence_hit(case: dict, quotes: list[str]) -> bool | None:
-    """True if one of the model's quotes matches one expected sentence (your evidence_matches)."""
+    """True if the model's quotes cover every expected group (uses learning.evidence_matches)."""
     if case.get("out_of_scope"):
         return None
-    return any(learning.evidence_matches(q, e) for q in quotes for e in case["expected_evidence"])
+    return all(any(learning.evidence_matches(q, e) for q in quotes for e in g) for g in groups(case))
 
 
 def pct(values: list) -> float | None:

@@ -10,6 +10,7 @@
 {"question": "ماذا يفعل من شك هل صلى ثلاثا أم أربعا؟", "madhhab": "maliki", "expected_evidence": ["ومن لم يدر ما صلى أثلاث ركعات أم أربعا بنى على اليقين", "ومن شك في كمال صلاته أتى بما شك فيه"]}
 {"question": "ماذا يفعل من قام من اثنتين ولم يجلس للتشهد؟", "madhhab": "maliki", "expected_evidence": ["ومن قام من اثنتين رجع ما لم يفارق الأرض بيديه وركبتيه", "ومن قام من ركعتين قبل الجلوس، فإن تذكر قبل أن يفارق الأرض بيديه وركبتيه رجع إلى الجلوس"]}
 {"question": "كم عدد التكبيرات في صلاة الجنازة؟", "madhhab": "maliki", "expected_evidence": ["والتكبير على الجنازة أربع تكبيرات"]}
+{"question": "ما هي سنن الصلاة الآكدة التي يسجد لسهوها؟", "madhhab": "maliki", "expected_groups": [["سنن الصلاة: الإقامة، والسورة التي بعد الفاتحة"], ["وأما السنة الواحدة فلا سجود لها إلا السر والجهر", "ولا يكون السجود القبلي إلا لترك سنتين فأكثر"]], "note": "the books never say «المؤكدة»: the answer must combine the list (no. 20) and the sahw rule (no. 25)"}
 {"question": "ما حكم زكاة الذهب؟", "madhhab": "maliki", "out_of_scope": true}
 {"question": "ما هي أركان الحج؟", "madhhab": "maliki", "out_of_scope": true}
 {"question": "ما حكم صيام يوم عرفة؟", "madhhab": "maliki", "out_of_scope": true}
