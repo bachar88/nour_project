@@ -4,9 +4,38 @@ import { Icon } from "./Icons.jsx";
 import { Highlighted } from "../highlight.jsx";
 
 // Shows a whole bab as numbered cards; the cited unit is highlighted and scrolled into view.
-export default function ReaderPanel({ target, onClose, onNavigate }) {
+// Pick mode (`picking`): the user selects the correct sentence in one card and confirms it.
+export default function ReaderPanel({ target, onClose, onNavigate, picking = false, onPicked, onCancelPick }) {
   const [bab, setBab] = useState(null);
   const [error, setError] = useState("");
+  const [pickError, setPickError] = useState("");
+
+  // Remember the last selection made inside a unit's text: on phones, tapping the button can clear it.
+  const lastSel = useRef(null);
+  useEffect(() => {
+    if (!picking) return;
+    const card = (node) => (node?.nodeType === 1 ? node : node?.parentElement)?.closest?.("[data-unit-key]");
+    const onChange = () => {
+      const sel = window.getSelection();
+      const quote = sel ? sel.toString().replace(/\s+/g, " ").trim() : "";
+      if (!quote) return;
+      const a = card(sel.anchorNode), b = card(sel.focusNode);
+      lastSel.current = { quote, unitKey: a && a === b ? a.dataset.unitKey : null };
+    };
+    document.addEventListener("selectionchange", onChange);
+    return () => document.removeEventListener("selectionchange", onChange);
+  }, [picking]);
+
+  function confirmPick() {
+    const s = lastSel.current;
+    if (!s || s.quote.split(" ").length < 3) return setPickError("حدّد جملة كاملة (ثلاث كلمات على الأقل).");
+    if (!s.unitKey) return setPickError("حدّد الجملة داخل مقطع واحد.");
+    if (s.quote.length > 800) return setPickError("التحديد طويل جدًا: اكتفِ بالجملة التي تجيب عن السؤال.");
+    setPickError("");
+    window.getSelection()?.removeAllRanges();
+    lastSel.current = null;
+    onPicked({ unitKey: s.unitKey, quote: s.quote });
+  }
   const focusRef = useRef(null);
   const listRef = useRef(null);
 
@@ -48,7 +77,18 @@ export default function ReaderPanel({ target, onClose, onNavigate }) {
         </button>
       </header>
 
-      <div className={`reader-list ${loadingOther ? "fading" : ""}`} ref={listRef}>
+      {picking && (
+        <div className="pick-banner" role="status">
+          <p><Icon.Cursor width={16} height={16} /> حدّد بالفأرة (أو بإصبعك) الجملة التي تجيب عن السؤال، ثم اضغط «اعتمد هذه الجملة».</p>
+          {pickError && <p className="pick-error">{pickError}</p>}
+          <div className="pick-actions">
+            <button className="btn btn-primary" onClick={confirmPick}>اعتمد هذه الجملة</button>
+            <button className="btn btn-ghost" onClick={onCancelPick}>إلغاء</button>
+          </div>
+        </div>
+      )}
+
+      <div className={`reader-list ${loadingOther ? "fading" : ""} ${picking ? "picking" : ""}`} ref={listRef}>
         {error && <p className="msg error"><Icon.Alert /> {error}</p>}
         {!bab && !error && <p className="muted center">جارٍ التحميل…</p>}
         {bab?.units.map((u) => {
@@ -59,7 +99,7 @@ export default function ReaderPanel({ target, onClose, onNavigate }) {
                 <span className="unit-number">{u.number}</span>
                 {u.section !== bab.bab_title && <span className="unit-section">{u.section}</span>}
               </div>
-              <p className="unit-text">
+              <p className="unit-text" data-unit-key={u.key}>
                 {focused ? <Highlighted text={u.text} spans={target.spans || []} /> : u.text}
               </p>
               <footer className="unit-foot">{bab.book} — رقم {u.number}</footer>

@@ -45,6 +45,22 @@ class MemoryStore:
     def ping(self):
         return True
 
+    # learning-loop tables, kept in memory (demo mode / tests)
+    def insert(self, table, row):
+        self.tables = getattr(self, "tables", {})
+        rows = self.tables.setdefault(table, [])
+        row = dict(row, id=len(rows) + 1)
+        rows.append(row)
+        return row
+
+    def select(self, table, **params):
+        return list(getattr(self, "tables", {}).get(table, []))
+
+    def match_corrections(self, embedding, madhhab, count):
+        rows = [r for r in getattr(self, "tables", {}).get("corrections", []) if r["madhhab"] == madhhab]
+        scored = [dict(r, similarity=sum(a * b for a, b in zip(embedding, r["embedding"]))) for r in rows]
+        return sorted(scored, key=lambda r: -r["similarity"])[:count]
+
 
 class FakeLLM:
     """mode='quote': quotes 12 words of passage [1]; 'invent': quotes text that is not there;

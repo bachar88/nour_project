@@ -228,6 +228,7 @@ export const api = {
       units: bab.unit_keys.map((k) => ({ key: k, number: units[k].number, section: units[k].section, text: unitText(k) })),
     };
   },
+  feedback: async () => ({ id: null, status: "preview" }), // preview build: nothing is stored
   ask: async (question, madhhab) => {
     const t0 = performance.now();
     const passages = retrieve(question).passages.map(publicPassage);

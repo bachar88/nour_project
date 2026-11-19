@@ -295,3 +295,35 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .topbar { padding: 10px; gap: 8px; }
   .pill.ok { display: none; }
 }
+
+/* ---------- Feedback (👍 / 👎) ---------- */
+.feedback { display: flex; flex-direction: column; gap: 10px; }
+.feedback-row { display: flex; align-items: center; gap: 6px; font-size: .85rem; }
+.feedback .icon-btn { border: 1px solid var(--line); background: var(--paper); border-radius: 10px; padding: 5px 7px; }
+.feedback .icon-btn:hover:not(:disabled) { color: var(--maroon); border-color: var(--gold); background: var(--gold-soft); }
+.feedback .icon-btn.active { color: var(--rose); border-color: #e8b9c6; background: var(--maroon-soft); }
+.feedback-form {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border: 1px dashed #e3cfb4; border-radius: 14px; background: #fffaf2;
+}
+.feedback-form textarea {
+  width: 100%; resize: vertical; font: inherit; font-size: .92rem; line-height: 1.6;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; outline: 0;
+}
+.feedback-form textarea:focus { border-color: var(--gold); }
+.picked { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+.picked .source-text { font-size: 1.12rem; }
+.feedback-actions { display: flex; gap: 8px; }
+.feedback-done { display: flex; align-items: center; gap: 6px; margin: 0; font-size: .85rem; color: var(--green); }
+
+/* Reader: pick mode */
+.pick-banner {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 18px;
+  background: var(--gold-soft); border-bottom: 1px solid #ead39d; color: #6d5214; font-size: .9rem;
+}
+.pick-banner p { display: flex; align-items: center; gap: 6px; margin: 0; }
+.pick-error { color: var(--rose); }
+.pick-actions { display: flex; gap: 8px; }
+.reader-list.picking .unit-text { cursor: text; }
+.reader-list.picking .unit-text::selection, .reader-list.picking .unit-text *::selection { background: #f3c9d4; }
+.picked .link { align-self: flex-start; }

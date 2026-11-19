@@ -69,6 +69,28 @@ class SupabaseStore:
             raise ValueError("delete_where needs at least one filter")
         self._check(self.http.delete(f"/{table}", params={k: f"eq.{v}" for k, v in equals.items()}))
 
+    # ---------- learning loop (tables in supabase/learning.sql) ----------
+    def insert(self, table: str, row: dict) -> dict:
+        """INSERT one row and return it (with its generated id)."""
+        r = self._check(self.http.post(f"/{table}", json=row, headers={"Prefer": "return=representation"}))
+        return r.json()[0]
+
+    def select(self, table: str, **params) -> list[dict]:
+        """GET with PostgREST filters, e.g. select("feedback", status="eq.new", order="created_at.desc")."""
+        return self._select_all(table, {"select": "*", **params})
+
+    def update(self, table: str, values: dict, **equals) -> None:
+        if not equals:
+            raise ValueError("update needs at least one filter")
+        self._check(self.http.patch(f"/{table}", json=values,
+                                    params={k: f"eq.{v}" for k, v in equals.items()},
+                                    headers={"Prefer": "return=minimal"}))
+
+    def match_corrections(self, embedding, madhhab: str, count: int) -> list[dict]:
+        r = self._check(self.http.post("/rpc/match_corrections", json={
+            "query_embedding": vector_literal(embedding), "filter_madhhab": madhhab, "match_count": count}))
+        return r.json()
+
     def get_meta(self, key: str) -> str | None:
         r = self._check(self.http.get("/index_meta", params={"select": "value", "key": f"eq.{key}"}))
         rows = r.json()

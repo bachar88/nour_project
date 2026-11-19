@@ -29,5 +29,8 @@ export const Icon = {
   Copy: (p) => (<svg {...base} {...p}><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>),
   Trash: (p) => (<svg {...base} {...p}><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></svg>),
   Close: (p) => (<svg {...base} {...p}><path d="M6 6l12 12M18 6L6 18" /></svg>),
+  ThumbUp: (p) => (<svg {...base} {...p}><path d="M7 11v9H4v-9z" /><path d="M7 11l4-7c1.3 0 2.2 1.1 2 2.4L12.5 10H18a2 2 0 0 1 2 2.3l-1.1 6A2 2 0 0 1 16.9 20H7" /></svg>),
+  ThumbDown: (p) => (<svg {...base} {...p}><path d="M7 13V4H4v9z" /><path d="M7 13l4 7c1.3 0 2.2-1.1 2-2.4L12.5 14H18a2 2 0 0 0 2-2.3l-1.1-6A2 2 0 0 0 16.9 4H7" /></svg>),
+  Cursor: (p) => (<svg {...base} {...p}><path d="M5 4l13 6-5.5 1.8L10.7 18z" /></svg>),
   Sparkle: (p) => (<svg {...base} {...p}><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>),
 };
