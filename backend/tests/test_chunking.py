@@ -1,4 +1,4 @@
-from app.chunking import find_quote_spans, normalize_ar
+from app.chunking import build_corpus, find_quote_spans, normalize_ar, split_into_babs, split_into_units
 
 
 def test_babs_and_units(corpus):
@@ -46,3 +46,22 @@ def test_quote_with_dropped_or_added_conjunction():
     assert spans and "السنة الواحدة" in text[spans[0][0]:spans[0][1]]
     assert find_quote_spans(text, "وأما السنتان فلا سجود لهما") is None              # different words: still rejected
     assert find_quote_spans("فرائض الصلاة سبع", "وفرائض الصلاة سبع")                 # model added «و»
+
+
+def test_keep_paragraphs_never_glues():
+    body = "ومن سلم شاكا بطلت صلاته،\n\nوالسهو في صلاة القضاء كالسهو في صلاة الأداء."
+    assert len(split_into_units(body)) == 1                        # Al-Risala rule: page break glued
+    assert len(split_into_units(body, keep_paragraphs=True)) == 2  # Al-Akhdari: paragraph kept
+
+
+def test_akhdari_chunks_stay_inside_one_paragraph():
+    import re
+    from app.config import settings
+    corpus = build_corpus(settings)
+    src = next(s for s in settings.sources if s.key == "akhdari")
+    paragraphs = [re.sub(r"\s+", " ", p).strip()
+                  for _, body in split_into_babs(src.path.read_text(encoding="utf-8"))
+                  for p in re.split(r"\n\s*\n", body) if p.strip()]
+    for c in corpus.chunks:
+        if c.metadata["book_key"] == "akhdari":
+            assert any(c.text in p for p in paragraphs), c.text[:60]

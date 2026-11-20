@@ -2,8 +2,8 @@
 
 Vocabulary
 - bab:     a chapter, detected from header lines starting with «باب».
-- unit:    a block about one topic: a فصل / (وسننه) paragraph in Al-Akhdari, a whole bab in
-           Al-Risala (whose blank lines are page breaks, re-joined here).
+- unit:    a block about one topic: one blank-line paragraph in Al-Akhdari (split by hand), a
+           whole bab in Al-Risala (whose blank lines are page breaks, re-joined here).
 - segment: smallest piece — a sentence, or the text between two ruling markers («ومن», «وأما»…).
 - chunk:   a few consecutive segments of one unit (~chunk_target_chars), overlapping by
            segment_overlap. Chunks are what gets embedded; units are what the reader shows.
@@ -47,14 +47,16 @@ def split_into_babs(text: str) -> list[tuple[str, str]]:
     return babs
 
 
-def split_into_units(body: str) -> list[str]:
-    """Blank lines are real paragraph breaks OR page breaks (mid-sentence): glue the latter back."""
+def split_into_units(body: str, keep_paragraphs: bool = False) -> list[str]:
+    """Blank lines are real paragraph breaks OR page breaks (mid-sentence): glue the latter back.
+    keep_paragraphs=True: every blank-line paragraph stays its own unit (text split by hand)."""
     units: list[str] = []
     for p in re.split(r"\n\s*\n", body):
         p = re.sub(r"\s+", " ", p).strip()
         if not p:
             continue
-        if units and not units[-1].endswith(END_PUNCT) and not TITLE_LIKE.match(p):
+        if (units and not keep_paragraphs
+                and not units[-1].endswith(END_PUNCT) and not TITLE_LIKE.match(p)):
             units[-1] += " " + p
         else:
             units.append(p)
@@ -162,7 +164,7 @@ def build_corpus(settings: Settings) -> Corpus:
             bab = {"index": b, "title": bab_title, "unit_keys": []}
             book.babs.append(bab)
             current = ""
-            for u, unit_text in enumerate(split_into_units(body)):
+            for u, unit_text in enumerate(split_into_units(body, src.paragraph_units)):
                 section, current = unit_section(unit_text, current, bab_title)
                 segs = split_into_segments(unit_text, settings.max_segment_chars)
                 if not segs:
@@ -188,7 +190,8 @@ def build_corpus(settings: Settings) -> Corpus:
 
     fingerprint = hashlib.md5(("".join(raw_texts) + repr((
         settings.cf_embed_model, settings.chunk_target_chars, settings.max_segment_chars,
-        settings.segment_overlap, settings.min_chunk_chars, MARKERS))).encode()).hexdigest()
+        settings.segment_overlap, settings.min_chunk_chars, MARKERS,
+        [s.paragraph_units for s in settings.sources]))).encode()).hexdigest()
     return Corpus(books, units, chunks, fingerprint)
 
 

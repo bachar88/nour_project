@@ -30,6 +30,10 @@ class Source:
     title: str
     author: str
     madhhab: str
+    # True: every blank-line paragraph is its own unit, so no chunk ever crosses it (Al-Akhdari,
+    # whose file is split by hand). False: a blank line after an unfinished sentence is a page
+    # break and is glued back (Al-Risala).
+    paragraph_units: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,7 +82,7 @@ class Settings:
         Source("risala", BACKEND_DIR / "data" / "al_risala.txt",
                "الرسالة", "ابن أبي زيد القيرواني", "maliki"),
         Source("akhdari", BACKEND_DIR / "data" / "al_akhdari.txt",
-               "مختصر الأخضري", "عبد الرحمن الأخضري", "maliki"),
+               "مختصر الأخضري", "عبد الرحمن الأخضري", "maliki", paragraph_units=True),
     ))
 
     def missing(self) -> list[str]:
